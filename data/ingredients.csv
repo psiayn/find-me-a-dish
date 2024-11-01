@@ -1,0 +1,55 @@
+name,unit_of_measure,category
+oil,ml,Condiments
+milk,ml,Dairy
+cheese,grams,Dairy
+paneer,grams,Dairy
+tomatoes,pieces,Vegetables
+onions,pieces,Vegetables
+garlic,cloves,Vegetables
+salt,grams,Condiments
+pepper,grams,Condiments
+chilli powder,grams,Spices
+coconut,pieces,Fruits
+coconut milk powder,grams,Condiments
+chillis,pieces,Spices
+red chillis,pieces,Spices
+coriander,grams,Herbs
+mint,grams,Herbs
+curd,ml,Dairy
+potato,pieces,Vegetables
+zucchini,pieces,Vegetables
+mushrooms,grams,Vegetables
+oyster mushrooms,grams,Vegetables
+eggs,pieces,Proteins
+raw banana,pieces,Fruits
+avocado,pieces,Fruits
+capsicum,pieces,Vegetables
+red bell peppers,pieces,Vegetables
+yellow bell peppers,pieces,Vegetables
+jalapenos,pieces,Vegetables
+olives,grams,Condiments
+lemon,pieces,Fruits
+butter,grams,Dairy
+ghee,grams,Dairy
+brinjal,pieces,Vegetables
+pasta,grams,Grains
+cream,ml,Dairy
+oregano,grams,Herbs
+bread,slices,Bakery
+sourdough bread,slices,Bakery
+garlic butter,grams,Condiments
+chilli flakes,grams,Spices
+tabasco sauce,ml,Condiments
+rice,grams,Grains
+wheat flour,grams,Baking
+flour,grams,Baking
+corn flour,grams,Baking
+baking soda,grams,Baking
+baking powder,grams,Baking
+dark chocolate,grams,Desserts
+cocoa powder,grams,Baking
+coffee,grams,Beverages
+basil,leaves,Herbs
+pistachio,grams,Nuts
+almonds,grams,Nuts
+cashews,grams,Nuts
