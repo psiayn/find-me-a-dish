@@ -1,77 +1,184 @@
-use serde::{Deserialize, Deserializer};
-use std::{collections::HashSet, fs};
+mod commands;
+mod init;
+mod rank;
 
-fn vec_string_from_string<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let keywords = String::deserialize(deserializer)?;
-    match keywords.len() {
-        0 => Ok(vec![]),
-        _ => Ok(keywords.split(",").map(|s| s.trim().to_string()).collect()),
+use std::collections::HashMap;
+use std::env;
+
+use dotenv::dotenv;
+
+use serenity::all::{CreateEmbed, EditMessage, GuildId, MessageId};
+use serenity::async_trait;
+use serenity::builder::{CreateInteractionResponse, CreateInteractionResponseMessage};
+use serenity::model::application::Interaction;
+use serenity::model::channel::Reaction;
+use serenity::model::gateway::Ready;
+use serenity::prelude::*;
+
+struct EmbedNavigator {
+    embed_index: HashMap<MessageId, usize>,
+    embeds: HashMap<MessageId, Vec<CreateEmbed>>,
+}
+
+struct EmbedNavigatorKey;
+
+impl TypeMapKey for EmbedNavigatorKey {
+    type Value = Mutex<EmbedNavigator>;
+}
+
+struct Handler;
+
+#[async_trait]
+impl EventHandler for Handler {
+    async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
+        if let Interaction::Command(command) = interaction {
+            match command.data.name.as_str() {
+                "ping" => {
+                    let embed = commands::ping::run(&command.data.options());
+                    let data = CreateInteractionResponseMessage::new().embed(embed);
+                    let builder = CreateInteractionResponse::Message(data);
+                    if let Err(why) = command.create_response(&ctx.http, builder).await {
+                        println!("Cannot respond to slash command: {why}");
+                    }
+                }
+                "fmad" => {
+                    let embeds = commands::fmad::run(&command.data.options());
+                    let embed = &embeds[0];
+                    let data = CreateInteractionResponseMessage::new().embed(embed.clone());
+                    let builder = CreateInteractionResponse::Message(data);
+
+                    if let Err(why) = command.create_response(&ctx.http, builder).await {
+                        println!("Cannot respond to slash command: {why}");
+                    }
+
+                    if let Ok(message) = command.get_response(&ctx.http).await {
+                        let message_id = message.id;
+
+                        let mut data = ctx.data.write().await;
+                        let mut tracker = data
+                            .get_mut::<EmbedNavigatorKey>()
+                            .expect("Expected EmbedNavigator in TypeMap")
+                            .lock()
+                            .await;
+
+                        tracker.embed_index.insert(message_id, 0);
+                        tracker.embeds.insert(message_id, embeds);
+
+                        message.react(&ctx.http, '👈').await.unwrap();
+                        message.react(&ctx.http, '👉').await.unwrap();
+                    }
+                }
+                _ => {}
+            };
+        }
+    }
+
+    async fn reaction_add(&self, ctx: Context, reaction: Reaction) {
+        let message_id = reaction.message_id;
+        let user_id = reaction.user_id.unwrap();
+
+        // Ignore bot's own reactions
+        if user_id == ctx.cache.current_user().id {
+            return;
+        }
+
+        // Access the state to check the current index for this message
+        let mut data = ctx.data.write().await;
+        let mut tracker = data
+            .get_mut::<EmbedNavigatorKey>()
+            .expect("Expected EmbedTracker in TypeMap.")
+            .lock()
+            .await;
+
+        let mut current_index = *tracker.embed_index.entry(message_id).or_insert(0);
+        let max_index = tracker.embeds.len().saturating_sub(1);
+
+        // Update index based on reaction
+        match reaction.emoji.to_string().as_str() {
+            "👉" => {
+                if current_index <= max_index {
+                    current_index += 1;
+                }
+            }
+            "👈" => {
+                if current_index > 0 {
+                    current_index -= 1;
+                }
+            }
+            _ => {
+                println!("{}", reaction.emoji);
+                return;
+            }
+        }
+
+        match tracker.embeds.get(&message_id) {
+            Some(embeds) => {
+                let builder = EditMessage::new().embed(embeds[current_index].clone());
+                let _ = reaction
+                    .channel_id
+                    .edit_message(&ctx.http, message_id, builder)
+                    .await;
+
+                // Remove the reaction to reset for the next interaction
+                let _ = reaction.delete(&ctx.http).await;
+            }
+            None => {
+                println!("{:?}", tracker.embeds);
+                return
+            },
+        };
+    }
+
+    async fn ready(&self, ctx: Context, ready: Ready) {
+        println!("{} is connected!", ready.user.name);
+        let guild_id = GuildId::new(
+            env::var("GUILD_ID")
+                .expect("Expected GUILD_ID in environment")
+                .parse()
+                .expect("GUILD_ID must be an integer"),
+        );
+
+        guild_id
+            .set_commands(&ctx.http, vec![
+                commands::ping::register(),
+                commands::fmad::register(),
+            ])
+            .await.unwrap();
     }
 }
 
-#[derive(Deserialize, Debug, Clone)]
-pub struct Recipe {
-    recipe: String,
-    instructions: String,
-    #[serde(deserialize_with = "vec_string_from_string")]
-    ingredients: Vec<String>,
-}
+#[tokio::main]
+async fn main() {
+    dotenv().ok();
+    let token = std::env::var("DISCORD_TOKEN").expect("DISCORD_TOKEN must be set");
 
-#[derive(Debug)]
-pub struct RankedRecipe {
-    recipe: Recipe,
-    rank: usize,
-}
+    // Set gateway intents, which decides what events the bot will be notified about
+    let intents = GatewayIntents::GUILD_MESSAGES
+        | GatewayIntents::DIRECT_MESSAGES
+        | GatewayIntents::MESSAGE_CONTENT
+        | GatewayIntents::GUILD_MESSAGE_REACTIONS
+        | GatewayIntents::DIRECT_MESSAGE_REACTIONS;
 
-fn initialize() -> (Vec<String>, Vec<Recipe>) {
-    let available_ingredients = csv::Reader::from_path("data/available_ingredients.csv")
-        .unwrap()
-        .deserialize()
-        .collect::<Result<Vec<String>, _>>()
-        .unwrap();
-    let recipes = csv::Reader::from_path("data/recipes.csv")
-        .unwrap()
-        .deserialize()
-        .collect::<Result<Vec<Recipe>, _>>()
-        .unwrap();
+    // Create a new instance of the Client, logging in as a bot. This will automatically prepend
+    // your bot token with "Bot ", which is a requirement by Discord for bot users.
+    let mut client = Client::builder(&token, intents)
+        .event_handler(Handler)
+        .await
+        .expect("Err creating client");
 
-    println!("AvailableIngredients: {available_ingredients:#?}");
-    println!("Recipes: {recipes:#?}");
+    {
+        let mut data = client.data.write().await;
+        data.insert::<EmbedNavigatorKey>(Mutex::new(EmbedNavigator {
+            embed_index: HashMap::new(),
+            embeds: HashMap::new(),
+        }));
+    }
 
-    (available_ingredients, recipes)
-}
-
-fn rank_recipes_by_available_ingredients(
-    available_ingredients: Vec<String>,
-    recipes: Vec<Recipe>,
-) -> Vec<RankedRecipe> {
-    let mut ranked_recipes: Vec<RankedRecipe> = Vec::new();
-
-    recipes.iter().for_each(|recipe| {
-        let required_ingredients: HashSet<_> = recipe.ingredients.iter().collect();
-        let available_count = available_ingredients
-            .iter()
-            .filter(|ingredient| required_ingredients.contains(ingredient))
-            .count();
-        ranked_recipes.push(RankedRecipe {
-            recipe: recipe.clone(),
-            rank: available_count,
-        });
-    });
-
-    ranked_recipes
-}
-
-fn main() {
-    let (available_ingredients, recipes) = initialize();
-
-    let mut ranked_recipes = rank_recipes_by_available_ingredients(available_ingredients, recipes);
-    ranked_recipes.sort_by_key(|ranked_recipe| ranked_recipe.rank);
-    ranked_recipes.reverse();
-    
-    println!("{ranked_recipes:#?}");
-    
+    // Finally, start a single shard, and start listening to events.
+    //
+    // Shards will automatically attempt to reconnect, and will perform exponential backoff until
+    // it reconnects.
+    if let Err(why) = client.start().await {
+        println!("Client error: {why:?}");
+    }
 }
