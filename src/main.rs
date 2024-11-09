@@ -1,9 +1,11 @@
 mod commands;
 mod init;
 mod rank;
+mod bluetooth_daemon;
 
 use std::collections::HashMap;
 use std::env;
+use std::thread;
 
 use dotenv::dotenv;
 
@@ -151,6 +153,8 @@ impl EventHandler for Handler {
 async fn main() {
     dotenv().ok();
     let token = std::env::var("DISCORD_TOKEN").expect("DISCORD_TOKEN must be set");
+
+    thread::spawn(|| bluetooth_daemon::find_fridge_open);
 
     // Set gateway intents, which decides what events the bot will be notified about
     let intents = GatewayIntents::GUILD_MESSAGES
