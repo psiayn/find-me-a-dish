@@ -2,6 +2,7 @@ mod bluetooth_daemon;
 mod commands;
 mod init;
 mod rank;
+mod types;
 
 use std::collections::HashMap;
 use std::env;
@@ -10,24 +11,15 @@ use bluetooth_daemon::check_fridge_open;
 use dotenv::dotenv;
 
 use serenity::all::ChannelId;
-use serenity::all::{CreateEmbed, EditMessage, GuildId, MessageId};
+use serenity::all::{EditMessage, GuildId};
 use serenity::async_trait;
 use serenity::builder::{CreateInteractionResponse, CreateInteractionResponseMessage};
 use serenity::model::application::Interaction;
 use serenity::model::channel::Reaction;
 use serenity::model::gateway::Ready;
 use serenity::prelude::*;
+use types::{EmbedNavigator, EmbedNavigatorKey};
 
-struct EmbedNavigator {
-    embed_index: HashMap<MessageId, usize>,
-    embeds: HashMap<MessageId, Vec<CreateEmbed>>,
-}
-
-struct EmbedNavigatorKey;
-
-impl TypeMapKey for EmbedNavigatorKey {
-    type Value = Mutex<EmbedNavigator>;
-}
 
 struct Handler;
 

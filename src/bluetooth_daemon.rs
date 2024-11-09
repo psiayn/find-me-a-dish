@@ -3,17 +3,36 @@ use std::time::Duration;
 use std::str;
 
 use clap::{value_parser, Arg, Command};
-use serenity::all::{ChannelId, Context, CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage};
+use serenity::all::{ChannelId, Context, CreateMessage};
 
-use crate::commands;
+use crate::{commands, types::EmbedNavigatorKey};
 
 async fn create_embed(ctx: Context, channel_id: ChannelId) {
 
     let embeds = commands::fmad::run();
     let embed = &embeds[0];
     let builder = CreateMessage::new().embed(embed.clone());
-    if let Err(why) = channel_id.send_message(&ctx.http, builder).await {
+    /* let Ok(message_id), Err(why) = channel_id.send_message(&ctx.http, builder).await;
+    if let Ok(message_id Err(why) =  {
         println!("Cannot respond to slash command: {why}");
+    } */
+    match channel_id.send_message(&ctx.http, builder).await {
+        Ok(message) => {
+            let message_id = message.id;
+            let mut data = ctx.data.write().await;
+            let mut tracker = data
+                .get_mut::<EmbedNavigatorKey>()
+                .expect("Expected EmbedNavigator in TypeMap")
+                .lock()
+                .await;
+
+            tracker.embed_index.insert(message_id, 0);
+            tracker.embeds.insert(message_id, embeds);
+
+            message.react(&ctx.http, '👈').await.unwrap();
+            message.react(&ctx.http, '👉').await.unwrap();
+        },
+        Err(why) => { println!("Cannot respond to slash command: {why}"); }
     }
 }
 
