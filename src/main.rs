@@ -1,14 +1,15 @@
+mod bluetooth_daemon;
 mod commands;
 mod init;
 mod rank;
-mod bluetooth_daemon;
 
 use std::collections::HashMap;
 use std::env;
-use std::thread;
 
+use bluetooth_daemon::check_fridge_open;
 use dotenv::dotenv;
 
+use serenity::all::ChannelId;
 use serenity::all::{CreateEmbed, EditMessage, GuildId, MessageId};
 use serenity::async_trait;
 use serenity::builder::{CreateInteractionResponse, CreateInteractionResponseMessage};
@@ -44,7 +45,7 @@ impl EventHandler for Handler {
                     }
                 }
                 "fmad" => {
-                    let embeds = commands::fmad::run(&command.data.options());
+                    let embeds = commands::fmad::run();
                     let embed = &embeds[0];
                     let data = CreateInteractionResponseMessage::new().embed(embed.clone());
                     let builder = CreateInteractionResponse::Message(data);
@@ -126,8 +127,8 @@ impl EventHandler for Handler {
             }
             None => {
                 println!("{:?}", tracker.embeds);
-                return
-            },
+                return;
+            }
         };
     }
 
@@ -139,13 +140,24 @@ impl EventHandler for Handler {
                 .parse()
                 .expect("GUILD_ID must be an integer"),
         );
+        let channel_id = ChannelId::new(
+            env::var("CHANNEL_ID")
+                .expect("Expected CHANNEL_ID in environment")
+                .parse()
+                .expect("CHANNEL_ID must be an integer"),
+        );
+        let ctx_clone = ctx.clone();
+        tokio::spawn(async move {
+            check_fridge_open(ctx_clone, channel_id).await;
+        });
 
         guild_id
-            .set_commands(&ctx.http, vec![
-                commands::ping::register(),
-                commands::fmad::register(),
-            ])
-            .await.unwrap();
+            .set_commands(
+                &ctx.http,
+                vec![commands::ping::register(), commands::fmad::register()],
+            )
+            .await
+            .unwrap();
     }
 }
 
@@ -154,7 +166,7 @@ async fn main() {
     dotenv().ok();
     let token = std::env::var("DISCORD_TOKEN").expect("DISCORD_TOKEN must be set");
 
-    thread::spawn(|| bluetooth_daemon::find_fridge_open);
+    // thread::spawn(|| bluetooth_daemon::find_fridge_open);
 
     // Set gateway intents, which decides what events the bot will be notified about
     let intents = GatewayIntents::GUILD_MESSAGES

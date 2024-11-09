@@ -7,7 +7,7 @@ use serenity::model::application::ResolvedOption;
 use crate::init::initialize;
 use crate::rank::rank_recipes_by_available_ingredients;
 
-pub fn run(_options: &[ResolvedOption]) -> Vec<CreateEmbed> {
+pub fn run() -> Vec<CreateEmbed> {
     let (available_ingredients, recipes) = initialize();
 
     let mut ranked_recipes = rank_recipes_by_available_ingredients(available_ingredients, recipes);

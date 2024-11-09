@@ -1,9 +1,23 @@
-use std::io::{self, Write};
+use std::io;
 use std::time::Duration;
+use std::str;
 
 use clap::{value_parser, Arg, Command};
+use serenity::all::{ChannelId, Context, CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage};
 
-pub fn find_fridge_open() {
+use crate::commands;
+
+async fn create_embed(ctx: Context, channel_id: ChannelId) {
+
+    let embeds = commands::fmad::run();
+    let embed = &embeds[0];
+    let builder = CreateMessage::new().embed(embed.clone());
+    if let Err(why) = channel_id.send_message(&ctx.http, builder).await {
+        println!("Cannot respond to slash command: {why}");
+    }
+}
+
+pub async fn check_fridge_open(ctx: Context, channel_id: ChannelId) {
     let matches = Command::new("Serialport Example - Receive Data")
         .about("Reads data from a serial port and echoes it to stdout")
         .disable_version_flag(true)
@@ -38,8 +52,13 @@ pub fn find_fridge_open() {
             loop {
                 match port.read(serial_buf.as_mut_slice()) {
                     Ok(t) => {
-                        io::stdout().write_all(&serial_buf[..t]).unwrap();
-                        io::stdout().flush().unwrap();
+                        let data = str::from_utf8(&serial_buf[..t]).unwrap();
+                        match data {
+                            "The fridge is open!" => {
+                                create_embed(ctx.clone(), channel_id).await;
+                            },
+                            _ => ()
+                        }
                     }
                     Err(ref e) if e.kind() == io::ErrorKind::TimedOut => (),
                     Err(_) => (),
