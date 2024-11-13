@@ -1,21 +1,17 @@
 use std::io;
-use std::time::Duration;
 use std::str;
+use std::time::Duration;
 
-use clap::{value_parser, Arg, Command};
 use serenity::all::{ChannelId, Context, CreateMessage};
 
 use crate::{commands, types::EmbedNavigatorKey};
+use tokio::{runtime::Handle, task::spawn_blocking};
+use log::{info, error};
 
 async fn create_embed(ctx: Context, channel_id: ChannelId) {
-
     let embeds = commands::fmad::run();
     let embed = &embeds[0];
     let builder = CreateMessage::new().embed(embed.clone());
-    /* let Ok(message_id), Err(why) = channel_id.send_message(&ctx.http, builder).await;
-    if let Ok(message_id Err(why) =  {
-        println!("Cannot respond to slash command: {why}");
-    } */
     match channel_id.send_message(&ctx.http, builder).await {
         Ok(message) => {
             let message_id = message.id;
@@ -26,37 +22,26 @@ async fn create_embed(ctx: Context, channel_id: ChannelId) {
                 .lock()
                 .await;
 
+            info!("Got mutex lock");
+
             tracker.embed_index.insert(message_id, 0);
             tracker.embeds.insert(message_id, embeds);
+            
+            info!("Created embed");
 
             message.react(&ctx.http, '👈').await.unwrap();
             message.react(&ctx.http, '👉').await.unwrap();
-        },
-        Err(why) => { println!("Cannot respond to slash command: {why}"); }
+        }
+        Err(why) => {
+            error!("Cannot create embed from fridge: {why}");
+        }
     }
+    info!("Created embed and reacted to it");
 }
 
 pub async fn check_fridge_open(ctx: Context, channel_id: ChannelId) {
-    let matches = Command::new("Serialport Example - Receive Data")
-        .about("Reads data from a serial port and echoes it to stdout")
-        .disable_version_flag(true)
-        .arg(
-            Arg::new("port")
-                .help("The device path to a serial port")
-                .use_value_delimiter(false)
-                .required(true),
-        )
-        .arg(
-            Arg::new("baud")
-                .help("The baud rate to connect at")
-                .use_value_delimiter(false)
-                .required(true)
-                .value_parser(value_parser!(u32)),
-        )
-        .get_matches();
-
-    let port_name = matches.get_one::<String>("port").unwrap();
-    let baud_rate = *matches.get_one::<u32>("baud").unwrap();
+    let port_name = "/dev/rfcomm0";
+    let baud_rate = 112500;
     println!("port_name: {port_name}");
     println!("baud_rate: {baud_rate}");
 
@@ -64,28 +49,42 @@ pub async fn check_fridge_open(ctx: Context, channel_id: ChannelId) {
         .timeout(Duration::from_millis(10))
         .open();
 
+
     match port {
         Ok(mut port) => {
-            let mut serial_buf: Vec<u8> = vec![0; 1000];
-            println!("Receiving data on {} at {} baud:", &port_name, &baud_rate);
-            loop {
-                match port.read(serial_buf.as_mut_slice()) {
-                    Ok(t) => {
-                        let data = str::from_utf8(&serial_buf[..t]).unwrap();
-                        match data {
-                            "The fridge is open!" => {
-                                create_embed(ctx.clone(), channel_id).await;
-                            },
-                            _ => ()
+            let handle = Handle::current();
+            spawn_blocking(move || {
+                let mut serial_buf: Vec<u8> = vec![0; 1000];
+                info!("Receiving data on {} at {} baud:", &port_name, &baud_rate);
+                loop {
+                    match port.read(serial_buf.as_mut_slice()) {
+                        Ok(t) => {
+                            let data = str::from_utf8(&serial_buf[..t]).unwrap().trim();
+                            println!("{data}");
+                            match data {
+                                "OPEN!" => {
+                                    info!("Fridge is open");
+                                    handle.block_on(async {
+                                        create_embed(ctx.clone(), channel_id).await
+                                    });
+                                }
+                                _ => ()
+                            }
+                        }
+                        Err(ref e) if e.kind() == io::ErrorKind::TimedOut => {
+                            error!("Error timeout: {e}");
+                        },
+                        Err(e) => {
+                            error!("Error while reading data from port: {e}");
                         }
                     }
-                    Err(ref e) if e.kind() == io::ErrorKind::TimedOut => (),
-                    Err(_) => (),
                 }
-            }
+            })
+            .await
+            .unwrap();
         }
         Err(e) => {
-            eprintln!("Failed to open \"{}\". Error: {}", port_name, e);
+            error!("Failed to open \"{}\". Error: {}", port_name, e);
             ::std::process::exit(1);
         }
     }

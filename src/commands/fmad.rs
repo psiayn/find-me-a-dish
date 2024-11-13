@@ -2,7 +2,6 @@ use std::collections::HashSet;
 
 use serenity::all::{Colour, CreateEmbedFooter};
 use serenity::builder::{CreateCommand, CreateEmbed};
-use serenity::model::application::ResolvedOption;
 
 use crate::init::initialize;
 use crate::rank::rank_recipes_by_available_ingredients;

@@ -19,6 +19,7 @@ use serenity::model::channel::Reaction;
 use serenity::model::gateway::Ready;
 use serenity::prelude::*;
 use types::{EmbedNavigator, EmbedNavigatorKey};
+use log::{info, error};
 
 
 struct Handler;
@@ -33,7 +34,7 @@ impl EventHandler for Handler {
                     let data = CreateInteractionResponseMessage::new().embed(embed);
                     let builder = CreateInteractionResponse::Message(data);
                     if let Err(why) = command.create_response(&ctx.http, builder).await {
-                        println!("Cannot respond to slash command: {why}");
+                        error!("Cannot respond to slash command: {why}");
                     }
                 }
                 "fmad" => {
@@ -41,9 +42,10 @@ impl EventHandler for Handler {
                     let embed = &embeds[0];
                     let data = CreateInteractionResponseMessage::new().embed(embed.clone());
                     let builder = CreateInteractionResponse::Message(data);
+                    info!("FMAD invoked");
 
                     if let Err(why) = command.create_response(&ctx.http, builder).await {
-                        println!("Cannot respond to slash command: {why}");
+                        error!("Cannot respond to slash command: {why}");
                     }
 
                     if let Ok(message) = command.get_response(&ctx.http).await {
@@ -61,6 +63,7 @@ impl EventHandler for Handler {
 
                         message.react(&ctx.http, '👈').await.unwrap();
                         message.react(&ctx.http, '👉').await.unwrap();
+                        info!("fmad");
                     }
                 }
                 _ => {}
@@ -88,6 +91,8 @@ impl EventHandler for Handler {
         let mut current_index = *tracker.embed_index.entry(message_id).or_insert(0);
         let max_index = tracker.embeds.len().saturating_sub(1);
 
+        info!("Inside reaction {}", reaction.emoji.to_string().as_str());
+
         // Update index based on reaction
         match reaction.emoji.to_string().as_str() {
             "👉" => {
@@ -101,7 +106,6 @@ impl EventHandler for Handler {
                 }
             }
             _ => {
-                println!("{}", reaction.emoji);
                 return;
             }
         }
@@ -139,9 +143,6 @@ impl EventHandler for Handler {
                 .expect("CHANNEL_ID must be an integer"),
         );
         let ctx_clone = ctx.clone();
-        tokio::spawn(async move {
-            check_fridge_open(ctx_clone, channel_id).await;
-        });
 
         guild_id
             .set_commands(
@@ -150,6 +151,13 @@ impl EventHandler for Handler {
             )
             .await
             .unwrap();
+
+        tokio::spawn(async move {
+            check_fridge_open(ctx_clone, channel_id).await;
+        });
+
+        println!("BAI");
+
     }
 }
 
